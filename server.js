@@ -14,6 +14,7 @@ const partyRoutes  = require('./routes/parties');
 const { messagesRouter, friendsRouter } = require('./routes/social');
 
 const app  = express();
+app.set('trust proxy', 1); // Render sits behind a proxy — needed for req.protocol to report https correctly
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({ origin: '*', methods: ['GET','POST','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
