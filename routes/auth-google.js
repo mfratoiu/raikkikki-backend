@@ -16,7 +16,10 @@ router.get('/google/callback', async (req, res) => {
 
   try {
     // Use the actual deployed origin (Render URL) for the redirect
-    const origin = `${req.protocol}://${req.get('host')}`;
+    // Use HTTPS explicitly for the deployed Render URL — req.protocol can report
+    // http even on HTTPS sites if the proxy isn't fully trusted
+    const host = req.get('host');
+    const origin = host.includes('localhost') ? `http://${host}` : `https://${host}`;
     const tokenData = await exchangeCode(code, origin);
 
     if (tokenData.error) {
@@ -100,3 +103,4 @@ async function findOrCreateGoogleUser(googleUser) {
 }
 
 module.exports = router;
+
