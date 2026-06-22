@@ -12,19 +12,17 @@ const JWT_SECRET           = process.env.JWT_SECRET           || 'raikkikki-secr
 
 router.get('/google/callback', async (req, res) => {
   const code = req.query.code;
+  const state = req.query.state; // 'app' if request came from the Android APK
   if (!code) return res.redirect('/?error=no_code');
 
   try {
-    // Use the actual deployed origin (Render URL) for the redirect
-    // Use HTTPS explicitly for the deployed Render URL — req.protocol can report
-    // http even on HTTPS sites if the proxy isn't fully trusted
     const host = req.get('host');
     const origin = host.includes('localhost') ? `http://${host}` : `https://${host}`;
     const tokenData = await exchangeCode(code, origin);
 
     if (tokenData.error) {
       console.error('Google token error:', tokenData.error, tokenData.error_description);
-      return res.redirect(`/?error=google_failed&reason=${encodeURIComponent(tokenData.error_description||tokenData.error)}`);
+      return res.redirect(buildRedirect(state, { error: 'google_failed', reason: tokenData.error_description||tokenData.error }));
     }
 
     const userInfo = await getGoogleUser(tokenData.access_token);
@@ -36,16 +34,29 @@ router.get('/google/callback', async (req, res) => {
       { expiresIn: '30d' }
     );
 
-    res.redirect(`/?token=${token}&user=${encodeURIComponent(JSON.stringify({
+    const userPayload = JSON.stringify({
       id: user.id, email: user.email, username: user.username,
       name: user.name || user.first_name, avatar: user.avatar || ''
-    }))}`);
+    });
+
+    res.redirect(buildRedirect(state, { token, user: userPayload }));
 
   } catch (err) {
     console.error('Google OAuth error:', err.message);
-    res.redirect(`/?error=google_failed&reason=${encodeURIComponent(err.message)}`);
+    res.redirect(buildRedirect(state, { error: 'google_failed', reason: err.message }));
   }
 });
+
+// Build the final redirect — custom scheme for the Android app, normal path for web
+function buildRedirect(state, params) {
+  const qs = Object.entries(params)
+    .map(([k,v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
+  if (state === 'app') {
+    return `com.raikkikki.app://oauth-callback?${qs}`;
+  }
+  return `/?${qs}`;
+}
 
 function exchangeCode(code, origin) {
   return new Promise((resolve, reject) => {
@@ -103,4 +114,3 @@ async function findOrCreateGoogleUser(googleUser) {
 }
 
 module.exports = router;
-
