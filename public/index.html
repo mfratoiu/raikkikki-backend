@@ -836,6 +836,8 @@ body:has(#screen-home.active) #bottom-nav{background:rgba(255,255,255,.7);backdr
         <div id="search-results"></div>
         <div class="section-hdr" data-i18n="my_connections">My connections</div>
         <div id="friends-list-dynamic"></div>
+        <div class="section-hdr" style="margin-top:8px">All raikkikki users</div>
+        <div id="all-users-list"><div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">Loading...</div></div>
         <div class="section-hdr" style="margin-top:8px" data-i18n="suggested">Suggested</div>
         <div id="suggested-list">
           <div class="contact-row">
@@ -1980,19 +1982,48 @@ async function loadFriends() {
       const row = document.createElement('div');
       row.className = 'contact-row';
       row.innerHTML = `
-        <div class="c-avatar">${(u.first_name||'?')[0].toUpperCase()}</div>
-        <div style="flex:1"><div class="c-name">${u.first_name} ${u.last_name}</div><div class="c-sub">@${u.username} · ${u.city||''}</div></div>
-        <button class="btn-chatup" onclick="openChatWith('${u.id}','${u.first_name} ${u.last_name}')">Chat up</button>
+        <div class="c-avatar" style="background:var(--r);color:#fff">${(u.first_name||u.username||'?')[0].toUpperCase()}</div>
+        <div style="flex:1"><div class="c-name">${(u.first_name||'')+' '+(u.last_name||u.username||'')}</div><div class="c-sub">@${u.username} · ${u.city||''}</div></div>
+        <button class="btn-chatup" onclick="openChatWith('${u.id}','${u.first_name||u.username}')">💬 Chat</button>
       `;
       list.appendChild(row);
     });
-    if (!friends.length) list.innerHTML=`<div style="padding:24px;text-align:center;color:var(--hint);font-size:13px">No friends yet — hit up a party!</div>`;
+    if (!friends.length) list.innerHTML=`<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">No friends yet — search for people below and start chatting!</div>`;
   } catch(e) {
-    list.innerHTML=`
-      <div class="contact-row"><div class="c-avatar">L</div><div style="flex:1"><div class="c-name">Linda Jabooz</div><div class="c-sub">@lindaj · New York</div></div><button class="btn-chatup" onclick="openChatWith('demo-L','Linda Jabooz')">Chat up</button></div>
-      <div class="contact-row"><div class="c-avatar">D</div><div style="flex:1"><div class="c-name">Donna Jabooz</div><div class="c-sub">@donnaj · New York</div></div><button class="btn-chatup" onclick="openChatWith('demo-D','Donna Jabooz')">Chat up</button></div>
-      <div class="contact-row"><div class="c-avatar">H</div><div style="flex:1"><div class="c-name">Henry Johnson</div><div class="c-sub">@henryj · New York</div></div><button class="btn-chatup" onclick="openChatWith('demo-H','Henry Johnson')">Chat up</button></div>
-    `;
+    list.innerHTML=`<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">Could not load friends</div>`;
+  }
+  loadAllUsers();
+}
+
+async function loadAllUsers() {
+  const list = document.getElementById('all-users-list');
+  if (!list || !App.token) return;
+  try {
+    // Search with empty-ish query to get all users
+    const data = await App.api('GET', '/search?q=a');
+    const users = (data.users||[]).filter(u => u.id !== App.user?.id);
+    if (!users.length) {
+      list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">No other users yet</div>`;
+      return;
+    }
+    list.innerHTML = '';
+    users.forEach(u => {
+      const row = document.createElement('div');
+      row.className = 'contact-row';
+      row.innerHTML = `
+        <div class="c-avatar" style="background:var(--r);color:#fff">${(u.first_name||u.username||'?')[0].toUpperCase()}</div>
+        <div style="flex:1">
+          <div class="c-name">${(u.first_name||'')+' '+(u.last_name||u.username||'')}</div>
+          <div class="c-sub">@${u.username}${u.city?' · '+u.city:''}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="openChatWith('${u.id}','${u.first_name||u.username}')" style="padding:6px 12px;background:var(--r);color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer">💬 Chat</button>
+          <button class="btn-add-friend" onclick="addFriend('${u.id}',this)">+ Add</button>
+        </div>`;
+      list.appendChild(row);
+    });
+  } catch(e) {
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">Search for users above to find people</div>`;
   }
 }
 
@@ -2007,7 +2038,7 @@ async function searchUsers(q) {
       if (u.id===App.user?.id) return;
       const row = document.createElement('div');
       row.className='contact-row';
-      row.innerHTML=`<div class="c-avatar">${(u.first_name||'?')[0].toUpperCase()}</div><div style="flex:1"><div class="c-name">${u.first_name} ${u.last_name}</div><div class="c-sub">@${u.username}</div></div><button class="btn-add-friend" onclick="addFriend('${u.id}',this)">+ Add</button>`;
+      row.innerHTML=`<div class="c-avatar" style="background:var(--r);color:#fff">${(u.first_name||u.username||'?')[0].toUpperCase()}</div><div style="flex:1"><div class="c-name">${(u.first_name||'')+' '+(u.last_name||u.username||'')}</div><div class="c-sub">@${u.username}${u.city?' · '+u.city:''}</div></div><div style="display:flex;gap:6px"><button class="btn-chatup" onclick="openChatWith('${u.id}','${(u.first_name||u.username)}')" style="padding:6px 12px;background:var(--r);color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer">💬 Chat</button><button class="btn-add-friend" onclick="addFriend('${u.id}',this)">+ Add</button></div>`;
       list.appendChild(row);
     });
   } catch(e){}
@@ -2016,10 +2047,16 @@ async function searchUsers(q) {
 async function addFriend(userId, btn) {
   if (!App.token) { showToast('Log in first'); return; }
   try {
-    await App.api('POST','/friends/requests',{to_user_id:userId});
+    await App.api('POST','/friends/requests',{to_id:userId});
     if (btn) { btn.textContent='Sent ✓'; btn.style.background='var(--g)'; btn.style.color='#fff'; btn.style.border='none'; btn.disabled=true; }
-    showToast('Friend request sent!');
-  } catch(e) { showToast(e.message); }
+    showToast('Friend request sent! 🎉');
+  } catch(e) {
+    if (e.message?.includes('409')||e.message?.includes('friend')||e.message?.includes('already')) {
+      showToast('Already connected!');
+    } else {
+      showToast(e.message||'Could not send request');
+    }
+  }
 }
 
 // ══════════════════════════════════════
