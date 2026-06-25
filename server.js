@@ -29,6 +29,17 @@ app.use('/api/parties',  partyRoutes);
 app.use('/api/messages', messagesRouter);
 app.use('/api/friends',  friendsRouter);
 
+// ── Get all users (for people discovery) ──
+app.get('/api/users', authMiddleware, async (req, res) => {
+  try {
+    const users = await db.query(
+      'SELECT id,username,email,first_name,last_name,city,country,avatar,bio,rating FROM users WHERE id != ? ORDER BY created_at DESC LIMIT 100',
+      [req.userId]
+    );
+    res.json(users);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Search ──
 app.get('/api/search', authMiddleware, async (req, res) => {
   try {
@@ -121,3 +132,4 @@ async function start() {
 start().catch(e => { console.error('Failed to start:', e); process.exit(1); });
 
 module.exports = app;
+
