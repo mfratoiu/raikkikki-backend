@@ -1900,7 +1900,8 @@ async function loadMessages() {
   }
   try {
     const data = await App.api('GET','/messages/'+App._chatPartnerId);
-    data.messages.forEach(m=>appendBubble(m.body, m.sender_id===App.user?.id, m.sent_at));
+    const msgs = Array.isArray(data) ? data : (data.messages || []);
+    msgs.forEach(m=>appendBubble(m.body, m.sender_id===App.user?.id, m.sent_at));
     list.scrollTop = list.scrollHeight;
   } catch(e) {}
 }
@@ -1955,7 +1956,7 @@ async function sendMsg() {
     const imgPayload = '[IMG]'+App.pendingImage;
     appendBubble(imgPayload, true, null);
     if (App.token && App._chatPartnerId && !App._chatPartnerId.startsWith('demo-') && !App._chatPartnerId.startsWith('group-')) {
-      try { await App.api('POST','/messages',{to_user_id:App._chatPartnerId,body:imgPayload}); } catch(e){}
+      try { await App.api('POST','/messages',{recipient_id:App._chatPartnerId,body:imgPayload}); } catch(e){}
     }
     removePendingImage();
   }
@@ -1964,7 +1965,7 @@ async function sendMsg() {
   input.value = '';
   appendBubble(text, true, null);
   if (App.token && App._chatPartnerId && !App._chatPartnerId.startsWith('demo-') && !App._chatPartnerId.startsWith('group-')) {
-    try { await App.api('POST','/messages',{to_user_id:App._chatPartnerId,body:text}); } catch(e){}
+    try { await App.api('POST','/messages',{recipient_id:App._chatPartnerId,body:text}); } catch(e){}
   }
 }
 
@@ -1999,31 +2000,40 @@ async function loadAllUsers() {
   const list = document.getElementById('all-users-list');
   if (!list || !App.token) return;
   try {
-    // Search with empty-ish query to get all users
-    const data = await App.api('GET', '/search?q=a');
-    const users = (data.users||[]).filter(u => u.id !== App.user?.id);
+    // Use dedicated endpoint that returns ALL users, not search-dependent
+    const users = await App.api('GET', '/users');
     if (!users.length) {
       list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">No other users yet</div>`;
       return;
     }
     list.innerHTML = '';
     users.forEach(u => {
+      const name = ((u.first_name||'')+' '+(u.last_name||'')).trim() || u.username;
+      const initial = (u.first_name||u.username||'?')[0].toUpperCase();
       const row = document.createElement('div');
       row.className = 'contact-row';
       row.innerHTML = `
-        <div class="c-avatar" style="background:var(--r);color:#fff">${(u.first_name||u.username||'?')[0].toUpperCase()}</div>
+        <div class="c-avatar" style="background:var(--r);color:#fff">${initial}</div>
         <div style="flex:1">
-          <div class="c-name">${(u.first_name||'')+' '+(u.last_name||u.username||'')}</div>
+          <div class="c-name">${name}</div>
           <div class="c-sub">@${u.username}${u.city?' · '+u.city:''}</div>
         </div>
         <div style="display:flex;gap:6px">
-          <button onclick="openChatWith('${u.id}','${u.first_name||u.username}')" style="padding:6px 12px;background:var(--r);color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer">💬 Chat</button>
+          <button onclick="openChatWith('${u.id}','${name.replace(/'/g,"\\'")}');" style="padding:6px 12px;background:var(--r);color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer">💬 Chat</button>
           <button class="btn-add-friend" onclick="addFriend('${u.id}',this)">+ Add</button>
         </div>`;
       list.appendChild(row);
     });
   } catch(e) {
-    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">Search for users above to find people</div>`;
+    // Fallback to search
+    try {
+      const data = await App.api('GET', '/search?q=a');
+      const users2 = (data.users||[]);
+      if (users2.length) { list.innerHTML=''; users2.forEach(u=>{ const row=document.createElement('div'); row.className='contact-row'; row.innerHTML=`<div class="c-avatar" style="background:var(--r);color:#fff">${(u.first_name||u.username||'?')[0].toUpperCase()}</div><div style="flex:1"><div class="c-name">${(u.first_name||'')+' '+(u.last_name||u.username||'')}</div><div class="c-sub">@${u.username}</div></div><button onclick="openChatWith('${u.id}','${u.first_name||u.username}')" style="padding:6px 12px;background:var(--r);color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer">💬 Chat</button>`; list.appendChild(row); }); }
+      else list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">No users found</div>`;
+    } catch(e2) {
+      list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--hint);font-size:13px">Could not load users</div>`;
+    }
   }
 }
 
@@ -2050,6 +2060,14 @@ async function addFriend(userId, btn) {
     await App.api('POST','/friends/requests',{to_id:userId});
     if (btn) { btn.textContent='Sent ✓'; btn.style.background='var(--g)'; btn.style.color='#fff'; btn.style.border='none'; btn.disabled=true; }
     showToast('Friend request sent! 🎉');
+    // Send automated intro message
+    const myName = App.user?.first_name || App.user?.username || 'Someone';
+    try {
+      await App.api('POST','/messages',{
+        recipient_id: userId,
+        body: `👋 Hey! ${myName} wants to connect with you on raikkikki!`
+      });
+    } catch(e) {} // silently fail if message doesn't send
   } catch(e) {
     if (e.message?.includes('409')||e.message?.includes('friend')||e.message?.includes('already')) {
       showToast('Already connected!');
@@ -3307,12 +3325,11 @@ function connectWebSocket() {
         if (msg.type==='message' && msg.data) {
           const m = msg.data;
           if (String(App._chatPartnerId)===String(m.sender_id)||String(App._chatPartnerId)===String(m.receiver_id)) {
-            appendBubble(m.content, m.sender_id==App.user?.id, m.sent_at);
+            appendBubble(m.body||m.content||'', m.sender_id==App.user?.id, m.sent_at);
             const area = document.getElementById('chat-messages');
             if (area) area.scrollTop = area.scrollHeight;
           } else {
-            showToast(`💬 New message from ${m.sender_name||'someone'}`);
-            loadNotifications();
+            showMessagePopup(m.sender_name||'Someone', m.body||m.content||'', m.sender_id);
           }
           loadConversations();
         }
@@ -3327,14 +3344,14 @@ function connectWebSocket() {
         // Never connected — server probably doesn't support WS, stop trying
         _wsDisabled = true;
         console.log('WS not available — using polling fallback');
-        setInterval(()=>{ if(App.token && App._chatPartnerId) loadMessages(); }, 5000);
+        setInterval(()=>{ if(App.token && App._chatPartnerId) loadMessages(); if(App.token) loadConversations(); }, 5000);
       }
     };
     _ws.onerror  = () => { _ws?.close(); };
   } catch(err) {
     _wsDisabled = true;
     console.log('WS not supported — using polling fallback');
-    setInterval(()=>{ if(App.token && App._chatPartnerId) loadMessages(); }, 5000);
+    setInterval(()=>{ if(App.token && App._chatPartnerId) loadMessages(); if(App.token) loadConversations(); }, 5000);
   }
 }
 // Connect when entering app
@@ -3401,6 +3418,29 @@ function handleAppUrlOpen(data) {
 }
 if (window.Capacitor?.Plugins?.App) {
   window.Capacitor.Plugins.App.addListener('appUrlOpen', handleAppUrlOpen);
+}
+
+
+// ── In-app message popup notification ──
+function showMessagePopup(senderName, body, senderId) {
+  document.getElementById('msg-popup')?.remove();
+  const popup = document.createElement('div');
+  popup.id = 'msg-popup';
+  popup.style.cssText = 'position:fixed;top:16px;left:12px;right:12px;background:#1a1a2e;color:#fff;border-radius:16px;padding:14px 16px;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,0.4);display:flex;align-items:center;gap:12px;cursor:pointer;animation:slideDown .3s ease';
+  popup.innerHTML = '<div style="width:40px;height:40px;border-radius:50%;background:var(--r);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0">' + (senderName||'?')[0].toUpperCase() + '</div><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">' + senderName + '</div><div style="font-size:12px;opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (body.startsWith('[IMG]') ? 'Photo' : body) + '</div></div><button onclick="document.getElementById('msg-popup')?.remove()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:50%;width:24px;height:24px;font-size:14px;cursor:pointer;flex-shrink:0">x</button>';
+  popup.addEventListener('click', function(e) {
+    if (e.target.tagName === 'BUTTON') return;
+    document.getElementById('msg-popup')?.remove();
+    if (senderId) openChatWith(senderId, senderName);
+  });
+  if (!document.getElementById('msg-popup-style')) {
+    const s = document.createElement('style');
+    s.id = 'msg-popup-style';
+    s.textContent = '@keyframes slideDown{from{transform:translateY(-80px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(popup);
+  setTimeout(() => { document.getElementById('msg-popup')?.remove(); }, 5000);
 }
 
 </script>
