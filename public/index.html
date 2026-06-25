@@ -1135,6 +1135,9 @@ body:has(#screen-home.active) #bottom-nav{background:rgba(255,255,255,.7);backdr
 <div id="toast"></div>
 
 <script>
+// ── getNative — hoisted function declaration, available everywhere ──
+function getNative() { return !!(window.Capacitor?.isNativePlatform?.() || window.Capacitor?.isNative); }
+
 // ── App config — edit these values for your setup ──
 window.RAKKI_API_HOST = "raikkikki.onrender.com"; // Render backend - works from anywhere
 window.RAKKI_API_PORT = 3000;
@@ -3363,8 +3366,7 @@ if (App.token) setTimeout(connectWebSocket, 500);
 // ── Detect if running as native APK (Capacitor) ──
 // ── Detect native app ──
 // Use a function so it's always evaluated fresh when needed
-function getNative() { return !!(window.Capacitor?.isNativePlatform?.() || window.Capacitor?.isNative); }
-const IS_NATIVE = getNative();
+const IS_NATIVE = !!(window.Capacitor?.isNativePlatform?.() || window.Capacitor?.isNative);
 
 // If NOT native (web browser), unhide FB and TikTok buttons
 if (!getNative()) {
