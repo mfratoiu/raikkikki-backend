@@ -3216,39 +3216,34 @@ function useMyLocationForParty() {
 // FIX 4: Social logins (wire up real OAuth or show config hint)
 // ═══════════════════════════════════════════════════
 async function loginWithGoogle() {
-  const clientId = window.GOOGLE_CLIENT_ID || '155764665177-j56rm5hisb0p4vocp49c1s4g26d236b9.apps.googleusercontent.com';
-  let redirectBase;
-  if (window.RAKKI_API_HOST && window.RAKKI_API_HOST.includes('onrender.com')) {
-    redirectBase = `https://${window.RAKKI_API_HOST}`;
-  } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    redirectBase = 'http://localhost:3000';
-  } else {
-    redirectBase = location.origin;
-  }
-  const redirect = encodeURIComponent(`${redirectBase}/auth/google/callback`);
-  const state = getNative() ? '&state=app' : '';
-  const googleUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirect}&response_type=code&scope=openid email profile${state}`;
+  try {
+    const clientId = window.GOOGLE_CLIENT_ID || '155764665177-j56rm5hisb0p4vocp49c1s4g26d236b9.apps.googleusercontent.com';
+    const redirectBase = 'https://raikkikki.onrender.com';
+    const redirect = encodeURIComponent(redirectBase + '/auth/google/callback');
+    const state = getNative() ? '&state=app' : '';
+    const googleUrl = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=' + clientId + '&redirect_uri=' + redirect + '&response_type=code&scope=openid email profile' + state;
 
-  // On native APK — use Capacitor's in-app browser so we stay in control
-  if (getNative()) {
-    // Try Capacitor Browser plugin first (in-app browser that returns to app)
-    const Browser = window.Capacitor?.Plugins?.Browser;
-    const App = window.Capacitor?.Plugins?.App;
-    if (Browser && App) {
-      // Remove any old listener first to avoid duplicates
-      try { await App.removeAllListeners(); } catch(e) {}
-      App.addListener('appUrlOpen', (data) => {
-        handleAppUrlOpen(data);
-        Browser.close();
-      });
-      await Browser.open({ url: googleUrl, presentationStyle: 'popover' });
+    if (getNative()) {
+      const Browser = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
+      const AppPlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+      if (Browser) {
+        if (AppPlugin) {
+          try { await AppPlugin.removeAllListeners(); } catch(e) {}
+          AppPlugin.addListener('appUrlOpen', function(data) {
+            handleAppUrlOpen(data);
+            try { Browser.close(); } catch(e) {}
+          });
+        }
+        await Browser.open({ url: googleUrl, presentationStyle: 'popover' });
+      } else {
+        window.location.href = googleUrl;
+      }
     } else {
-      // Fallback: open in system browser — user will be redirected back via custom scheme
-      location.href = googleUrl;
+      window.location.href = googleUrl;
     }
-  } else {
-    // Web — normal redirect
-    location.href = googleUrl;
+  } catch(err) {
+    console.error('Google login error:', err);
+    showToast('Google login error: ' + (err.message || String(err)));
   }
 }
 function loginWithFacebook() {
